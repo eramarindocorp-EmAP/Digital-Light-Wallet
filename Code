@@ -1,0 +1,127 @@
+/**
+ * Digital Light Wallet - Backend Code.gs
+ * Aplikasi Pencatatan Keuangan Pribadi Berbasis Google Apps Script
+ */
+
+// JIKA SCRIPT BERDIRI SENDIRI (STANDALONE), ISI ID SPREADSHEET DI BAWAH INI:
+// Contoh: const SPREADSHEET_ID = '1abc123xyz...';
+const SPREADSHEET_ID = ''; 
+
+function getSpreadsheet() {
+  if (SPREADSHEET_ID && SPREADSHEET_ID.trim() !== '') {
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  }
+  const activeDoc = SpreadsheetApp.getActiveSpreadsheet();
+  if (!activeDoc) {
+    throw new Error('Spreadsheet tidak ditemukan! Jika Anda membuat skrip terpisah dari Sheets, isi variabel SPREADSHEET_ID di baris paling atas Code.gs.');
+  }
+  return activeDoc;
+}
+
+// Function untuk menyajikan HTML ke browser saat Web App diakses
+function doGet() {
+  return HtmlService.createTemplateFromFile('index')
+    .evaluate()
+    .setTitle('Digital Light Wallet')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Inisialisasi atau mendapatkan sheet khusus transaksi
+function getSheet() {
+  const doc = getSpreadsheet();
+  let sheet = doc.getSheetByName('Transactions');
+  
+  if (!sheet) {
+    sheet = doc.insertSheet('Transactions');
+    // Header Sheet
+    sheet.appendRow(['ID', 'Tanggal', 'Tipe', 'Kategori', 'Jumlah', 'Keterangan', 'Waktu Dibuat']);
+    sheet.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#f59e0b').setFontColor('#ffffff');
+  }
+  return sheet;
+}
+
+// Fungsi pengujian koneksi untuk memastikan Apps Script berjalan tanpa masalah
+function testConnection() {
+  try {
+    const sheet = getSheet();
+    return { status: 'success', message: 'Koneksi ke Sheet "' + sheet.getName() + '" berhasil!' };
+  } catch (error) {
+    return { status: 'error', message: error.message };
+  }
+}
+
+// Mengambil semua data transaksi dari Google Sheets
+function getTransactionsData() {
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    
+    // Abaikan baris header (index 0)
+    if (data.length <= 1) return [];
+
+    const transactions = [];
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (!row[0]) continue; // Lewati jika ID kosong
+      
+      transactions.push({
+        id: String(row[0]),
+        date: formatDate(row[1]),
+        type: String(row[2]),
+        category: String(row[3]),
+        amount: Number(row[4]),
+        note: String(row[5] || '')
+      });
+    }
+    return transactions;
+  } catch (error) {
+    throw new Error('Gagal membaca data dari spreadsheet: ' + error.message);
+  }
+}
+
+// Menyimpan transaksi baru ke Google Sheets
+function saveTransaction(payload) {
+  try {
+    const sheet = getSheet();
+    const newRow = [
+      payload.id,
+      payload.date,
+      payload.type,
+      payload.category,
+      payload.amount,
+      payload.note,
+      new Date()
+    ];
+    sheet.appendRow(newRow);
+    return { status: 'success' };
+  } catch (error) {
+    throw new Error('Gagal menyimpan transaksi: ' + error.message);
+  }
+}
+
+// Menghapus transaksi berdasarkan ID
+function deleteTransaction(id) {
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(id)) {
+        sheet.deleteRow(i + 1); // +1 karena sheet berbasis 1-index
+        return { status: 'success' };
+      }
+    }
+    return { status: 'not_found' };
+  } catch (error) {
+    throw new Error('Gagal menghapus data: ' + error.message);
+  }
+}
+
+// Utility Format Tanggal YYYY-MM-DD
+function formatDate(dateVal) {
+  if (dateVal instanceof Date) {
+    return Utilities.formatDate(dateVal, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(dateVal);
+}
